@@ -1,305 +1,333 @@
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DevChat - Realtime App</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #475569; }
-    </style>
-</head>
-<body class="bg-slate-950 text-slate-200 h-screen overflow-hidden">
+import React, { useState, useEffect, useRef } from 'react';
+import { initializeApp } from 'firebase/app';
+import { 
+  getAuth, 
+  signInAnonymously, 
+  signInWithCustomToken, 
+  onAuthStateChanged 
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  query, 
+  onSnapshot, 
+  addDoc, 
+  serverTimestamp, 
+  doc, 
+  setDoc 
+} from 'firebase/firestore';
+import { 
+  Send, 
+  User, 
+  Hash, 
+  LogOut, 
+  MessageSquare, 
+  Users,
+  Settings,
+  Search
+} from 'lucide-react';
 
-    <div id="app" class="flex h-full w-full">
-        <!-- Sidebar -->
-        <aside class="w-64 bg-slate-900 border-r border-slate-800 hidden md:flex flex-col">
-            <div class="p-4 border-b border-slate-800 flex items-center gap-3">
-                <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-900/20">
-                    <i class="fas fa-comments text-white"></i>
-                </div>
-                <h1 class="font-bold text-lg tracking-tight">DevChat</h1>
-            </div>
-            
-            <div class="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar">
-                <p class="text-[10px] font-bold text-slate-500 px-3 py-2 uppercase tracking-[0.1em]">Kênh thảo luận</p>
-                <div id="room-list">
-                    <!-- Rooms will be injected here -->
-                </div>
-            </div>
+// --- Cấu hình Firebase ---
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'github-style-chat';
 
-            <div class="p-4 bg-slate-900/50 border-t border-slate-800">
-                <div class="flex items-center gap-3">
-                    <div id="user-avatar" class="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold shadow-md">?</div>
-                    <div class="flex-1 min-w-0">
-                        <p id="display-username" class="text-sm font-medium truncate">Đang tải...</p>
-                        <p id="display-id" class="text-[10px] text-slate-500 truncate">#id</p>
-                    </div>
-                    <button onclick="toggleSettings()" class="text-slate-500 hover:text-white transition-colors">
-                        <i class="fas fa-cog"></i>
-                    </button>
-                </div>
-            </div>
-        </aside>
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [activeRoom, setActiveRoom] = useState('chung');
+  const [usersOnline, setUsersOnline] = useState([]);
+  const [username, setUsername] = useState('');
+  const [isSettingUsername, setIsSettingUsername] = useState(false);
+  const scrollRef = useRef(null);
 
-        <!-- Main Chat -->
-        <main class="flex-1 flex flex-col min-w-0 relative bg-slate-950">
-            <header class="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/30 backdrop-blur-md z-10">
-                <div class="flex items-center gap-3">
-                    <i class="fas fa-hashtag text-slate-500"></i>
-                    <h2 id="active-room-name" class="font-bold text-lg text-slate-100">Sảnh chung</h2>
-                </div>
-                <div class="flex items-center gap-4">
-                    <div class="flex items-center gap-2 px-3 py-1 bg-slate-800/50 border border-slate-700/50 rounded-full text-[10px] font-medium">
-                        <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-                        <span id="online-count">0</span> Đang online
-                    </div>
-                </div>
-            </header>
+  const rooms = [
+    { id: 'chung', name: 'Sảnh chung', icon: <Hash size={18} /> },
+    { id: 'lap-trinh', name: 'Lập trình', icon: <Hash size={18} /> },
+    { id: 'thao-luan', name: 'Thảo luận', icon: <Hash size={18} /> },
+  ];
 
-            <div id="messages-container" class="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-                <!-- Messages will be injected here -->
-            </div>
+  // 1. Khởi tạo Auth
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (error) {
+        console.error("Auth error:", error);
+      }
+    };
+    initAuth();
 
-            <div class="p-4 bg-slate-900/30 border-t border-slate-800">
-                <form id="chat-form" class="max-w-5xl mx-auto flex items-center gap-3">
-                    <input 
-                        type="text" 
-                        id="message-input" 
-                        placeholder="Nhập nội dung tin nhắn..."
-                        class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-slate-500"
-                        autocomplete="off"
-                    >
-                    <button type="submit" class="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all active:scale-95 shadow-lg shadow-blue-900/40">
-                        <i class="fas fa-paper-plane"></i>
-                    </button>
-                </form>
-            </div>
-        </main>
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+        // Cập nhật trạng thái online
+        const userDoc = doc(db, 'artifacts', appId, 'public', 'data', 'online_users', currentUser.uid);
+        setDoc(userDoc, {
+          uid: currentUser.uid,
+          username: username || `User_${currentUser.uid.slice(0, 4)}`,
+          lastSeen: serverTimestamp()
+        }, { merge: true });
+      }
+    });
 
-        <!-- Members Sidebar -->
-        <aside class="w-64 bg-slate-900 border-l border-slate-800 hidden lg:flex flex-col">
-            <div class="p-4 border-b border-slate-800">
-                <h3 class="font-semibold text-xs text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <i class="fas fa-users text-xs"></i> Thành viên
-                </h3>
-            </div>
-            <div id="members-list" class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-                <!-- Online members will be injected here -->
-            </div>
-        </aside>
-    </div>
+    return () => unsubscribe();
+  }, [username]);
 
-    <!-- Username Modal -->
-    <div id="settings-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-            <h3 class="text-xl font-bold mb-4 text-white">Hồ sơ người dùng</h3>
-            <div class="space-y-4">
-                <div>
-                    <label class="block text-[10px] font-bold text-slate-500 uppercase mb-2">Tên hiển thị</label>
-                    <input 
-                        type="text" 
-                        id="username-input" 
-                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                        placeholder="Nguyễn Thế Ngọc..."
-                    >
-                </div>
-                <div class="flex gap-2">
-                    <button onclick="saveSettings()" class="flex-1 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-bold text-white transition-all">Lưu</button>
-                    <button onclick="toggleSettings()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg font-medium text-slate-300">Hủy</button>
-                </div>
-            </div>
+  // 2. Lắng nghe tin nhắn & Người dùng online
+  useEffect(() => {
+    if (!user) return;
+
+    // Lắng nghe tin nhắn trong phòng hiện tại
+    const msgQuery = collection(db, 'artifacts', appId, 'public', 'data', `messages_${activeRoom}`);
+    const unsubscribeMsgs = onSnapshot(msgQuery, (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Sắp xếp theo thời gian (vì không dùng orderBy trong query theo Rule 2)
+      const sorted = docs.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
+      setMessages(sorted);
+    }, (err) => console.error("Firestore error:", err));
+
+    // Lắng nghe người dùng online
+    const userQuery = collection(db, 'artifacts', appId, 'public', 'data', 'online_users');
+    const unsubscribeUsers = onSnapshot(userQuery, (snapshot) => {
+      setUsersOnline(snapshot.docs.map(doc => doc.data()));
+    }, (err) => console.error("Users list error:", err));
+
+    return () => {
+      unsubscribeMsgs();
+      unsubscribeUsers();
+    };
+  }, [user, activeRoom]);
+
+  // Tự động cuộn xuống khi có tin nhắn mới
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!newMessage.trim() || !user) return;
+
+    try {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', `messages_${activeRoom}`), {
+        text: newMessage,
+        uid: user.uid,
+        username: username || `User_${user.uid.slice(0, 4)}`,
+        timestamp: serverTimestamp(),
+      });
+      setNewMessage('');
+    } catch (error) {
+      console.error("Error sending message:", error);
+    }
+  };
+
+  const updateUsername = (e) => {
+    e.preventDefault();
+    setIsSettingUsername(false);
+  };
+
+  if (!user) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-900 text-white">
+        <div className="animate-pulse flex flex-col items-center">
+          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+          <p>Đang kết nối server...</p>
         </div>
-    </div>
+      </div>
+    );
+  }
 
-    <!-- Firebase Scripts -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, serverTimestamp, onSnapshot, query, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Firebase Config
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'github-chat-static';
+  return (
+    <div className="flex h-screen bg-slate-950 text-slate-200 overflow-hidden font-sans">
+      {/* Sidebar - Danh sách phòng */}
+      <div className="w-64 bg-slate-900 flex flex-col border-r border-slate-800 hidden md:flex">
+        <div className="p-4 border-b border-slate-800 flex items-center gap-2">
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+            <MessageSquare size={18} className="text-white" />
+          </div>
+          <h1 className="font-bold text-lg tracking-tight">DevChat</h1>
+        </div>
         
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+        <div className="flex-1 overflow-y-auto p-3 space-y-1">
+          <p className="text-xs font-semibold text-slate-500 px-3 py-2 uppercase tracking-wider">Kênh thảo luận</p>
+          {rooms.map(room => (
+            <button
+              key={room.id}
+              onClick={() => setActiveRoom(room.id)}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
+                activeRoom === room.id ? 'bg-slate-800 text-white' : 'hover:bg-slate-800/50 text-slate-400'
+              }`}
+            >
+              {room.icon}
+              <span className="font-medium">{room.name}</span>
+            </button>
+          ))}
+        </div>
 
-        let currentUser = null;
-        let currentUsername = localStorage.getItem('chat_username') || '';
-        let activeRoom = 'chung';
+        <div className="p-4 bg-slate-900/50 border-t border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
+              {username ? username[0].toUpperCase() : 'U'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{username || 'Người dùng ẩn danh'}</p>
+              <p className="text-xs text-slate-500 truncate">#{user.uid.slice(0, 6)}</p>
+            </div>
+            <button 
+              onClick={() => setIsSettingUsername(true)}
+              className="text-slate-500 hover:text-white transition-colors"
+            >
+              <Settings size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
 
-        const rooms = [
-            { id: 'chung', name: 'Sảnh chung', icon: 'fa-house' },
-            { id: 'lap-trinh', name: 'Lập trình', icon: 'fa-code' },
-            { id: 'giai-tri', name: 'Giải trí', icon: 'fa-gamepad' }
-        ];
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col min-w-0 relative">
+        {/* Header */}
+        <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50 backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <Hash className="text-slate-500" size={20} />
+            <h2 className="font-bold text-lg">
+              {rooms.find(r => r.id === activeRoom)?.name}
+            </h2>
+          </div>
+          <div className="flex items-center gap-4 text-slate-400">
+            <div className="flex items-center gap-2 px-3 py-1 bg-slate-800 rounded-full text-xs">
+              <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+              {usersOnline.length} Đang trực tuyến
+            </div>
+          </div>
+        </header>
 
-        // UI Elements
-        const msgContainer = document.getElementById('messages-container');
-        const chatForm = document.getElementById('chat-form');
-        const msgInput = document.getElementById('message-input');
-        const roomList = document.getElementById('room-list');
-        const membersList = document.getElementById('members-list');
-        const onlineCount = document.getElementById('online-count');
-
-        // Init App
-        async function init() {
-            // Render rooms
-            roomList.innerHTML = rooms.map(room => `
-                <button onclick="switchRoom('${room.id}')" id="room-${room.id}" class="room-btn w-full flex items-center gap-3 px-3 py-2 rounded-md transition-all text-slate-400 hover:bg-slate-800 hover:text-white">
-                    <i class="fas ${room.icon} text-sm"></i>
-                    <span class="font-medium text-sm">${room.name}</span>
-                </button>
-            `).join('');
-            
-            updateRoomUI();
-
-            // Auth
-            onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    currentUser = user;
-                    if (!currentUsername) currentUsername = `User_${user.uid.slice(0, 4)}`;
-                    updateUserUI();
-                    updateOnlineStatus();
-                    loadMessages();
-                    loadMembers();
-                } else {
-                    await signInAnonymously(auth);
-                }
-            });
-        }
-
-        window.switchRoom = (id) => {
-            activeRoom = id;
-            document.getElementById('active-room-name').innerText = rooms.find(r => r.id === id).name;
-            updateRoomUI();
-            loadMessages();
-        };
-
-        function updateRoomUI() {
-            document.querySelectorAll('.room-btn').forEach(btn => {
-                btn.classList.remove('bg-slate-800', 'text-white');
-                btn.classList.add('text-slate-400');
-            });
-            const activeBtn = document.getElementById(`room-${activeRoom}`);
-            activeBtn.classList.add('bg-slate-800', 'text-white');
-            activeBtn.classList.remove('text-slate-400');
-        }
-
-        function updateUserUI() {
-            document.getElementById('display-username').innerText = currentUsername;
-            document.getElementById('display-id').innerText = `#${currentUser.uid.slice(0, 6)}`;
-            document.getElementById('user-avatar').innerText = currentUsername[0].toUpperCase();
-        }
-
-        async function updateOnlineStatus() {
-            if (!currentUser) return;
-            const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'online_users', currentUser.uid);
-            await setDoc(userRef, {
-                uid: currentUser.uid,
-                username: currentUsername,
-                lastSeen: serverTimestamp()
-            }, { merge: true });
-        }
-
-        let unsubscribeMsgs = null;
-        function loadMessages() {
-            if (unsubscribeMsgs) unsubscribeMsgs();
-            
-            const q = collection(db, 'artifacts', appId, 'public', 'data', `msg_${activeRoom}`);
-            unsubscribeMsgs = onSnapshot(q, (snapshot) => {
-                const msgs = snapshot.docs.map(doc => doc.data())
-                    .sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
-                
-                msgContainer.innerHTML = msgs.map(msg => {
-                    const isMe = msg.uid === currentUser.uid;
-                    const time = msg.timestamp ? new Date(msg.timestamp.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '...';
-                    return `
-                        <div class="flex gap-4 ${isMe ? 'flex-row-reverse' : ''}">
-                            <div class="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center font-bold shadow-md ${isMe ? 'bg-blue-600' : 'bg-slate-800'} text-white">
-                                ${msg.username[0].toUpperCase()}
-                            </div>
-                            <div class="flex flex-col max-w-[75%] ${isMe ? 'items-end' : 'items-start'}">
-                                <div class="flex items-baseline gap-2 mb-1">
-                                    <span class="text-xs font-bold text-slate-400">${msg.username}</span>
-                                    <span class="text-[9px] text-slate-600">${time}</span>
-                                </div>
-                                <div class="${isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-300 rounded-tl-none border border-slate-700/50'} px-4 py-2 rounded-2xl text-sm shadow-sm">
-                                    ${msg.text}
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                }).join('');
-                msgContainer.scrollTop = msgContainer.scrollHeight;
-            });
-        }
-
-        function loadMembers() {
-            const q = collection(db, 'artifacts', appId, 'public', 'data', 'online_users');
-            onSnapshot(q, (snapshot) => {
-                const members = snapshot.docs.map(doc => doc.data());
-                onlineCount.innerText = members.length;
-                membersList.innerHTML = members.map(m => `
-                    <div class="flex items-center gap-3">
-                        <div class="relative">
-                            <div class="w-8 h-8 bg-slate-800 rounded-lg flex items-center justify-center text-xs font-bold border border-slate-700 text-slate-400">
-                                ${m.username[0].toUpperCase()}
-                            </div>
-                            <div class="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-green-500 border-2 border-slate-900 rounded-full"></div>
-                        </div>
-                        <div class="min-w-0">
-                            <p class="text-xs font-medium text-slate-300 truncate">${m.username}</p>
-                            <p class="text-[9px] text-slate-500 font-mono">online</p>
-                        </div>
+        {/* Messages */}
+        <div 
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth"
+        >
+          {messages.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-slate-500 opacity-50">
+              <MessageSquare size={48} className="mb-4" />
+              <p>Chưa có tin nhắn nào trong phòng này.</p>
+              <p className="text-sm italic">Hãy là người đầu tiên bắt chuyện!</p>
+            </div>
+          ) : (
+            messages.map((msg, idx) => {
+              const isMe = msg.uid === user.uid;
+              return (
+                <div key={msg.id || idx} className={`flex gap-4 ${isMe ? 'flex-row-reverse' : ''}`}>
+                  <div className={`w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center font-bold shadow-lg ${
+                    isMe ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300'
+                  }`}>
+                    {msg.username ? msg.username[0].toUpperCase() : '?'}
+                  </div>
+                  <div className={`flex flex-col max-w-[70%] ${isMe ? 'items-end' : 'items-start'}`}>
+                    <div className="flex items-baseline gap-2 mb-1">
+                      <span className="text-sm font-bold text-slate-300">{msg.username}</span>
+                      <span className="text-[10px] text-slate-500">
+                        {msg.timestamp?.seconds ? new Date(msg.timestamp.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '...'}
+                      </span>
                     </div>
-                `).join('');
-            });
-        }
+                    <div className={`px-4 py-2 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                      isMe 
+                        ? 'bg-blue-600 text-white rounded-tr-none' 
+                        : 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700'
+                    }`}>
+                      {msg.text}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
 
-        chatForm.onsubmit = async (e) => {
-            e.preventDefault();
-            const text = msgInput.value.trim();
-            if (!text || !currentUser) return;
+        {/* Input Area */}
+        <div className="p-4 bg-slate-900/50 backdrop-blur-md border-t border-slate-800">
+          <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto relative flex items-center gap-2">
+            <input
+              type="text"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder={`Nhắn tin vào #${rooms.find(r => r.id === activeRoom)?.id}...`}
+              className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all text-slate-200 placeholder:text-slate-500"
+            />
+            <button
+              type="submit"
+              disabled={!newMessage.trim()}
+              className="p-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 rounded-xl text-white transition-all transform active:scale-95 shadow-lg shadow-blue-900/20"
+            >
+              <Send size={20} />
+            </button>
+          </form>
+          <p className="text-[10px] text-center text-slate-600 mt-2">
+            Nhấn Enter để gửi tin nhắn. Hãy cư xử văn minh trên {appId}.
+          </p>
+        </div>
+      </div>
 
-            msgInput.value = '';
-            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', `msg_${activeRoom}`), {
-                text,
-                uid: currentUser.uid,
-                username: currentUsername,
-                timestamp: serverTimestamp()
-            });
-        };
+      {/* Right Sidebar - Online Users */}
+      <div className="w-64 bg-slate-900 border-l border-slate-800 hidden lg:flex flex-col">
+        <div className="p-4 border-b border-slate-800 flex items-center gap-2">
+          <Users size={18} className="text-slate-400" />
+          <h3 className="font-semibold text-sm">Thành viên ({usersOnline.length})</h3>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {usersOnline.map((u, i) => (
+            <div key={i} className="flex items-center gap-3 group cursor-default">
+              <div className="relative">
+                <div className="w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-xs font-bold text-slate-400 border border-slate-700">
+                  {u.username ? u.username[0].toUpperCase() : 'U'}
+                </div>
+                <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-slate-900 rounded-full"></div>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-300 truncate group-hover:text-white transition-colors">{u.username}</p>
+                <p className="text-[10px] text-slate-500 uppercase font-mono tracking-tighter">Online</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
-        window.toggleSettings = () => {
-            const modal = document.getElementById('settings-modal');
-            modal.classList.toggle('hidden');
-            if (!modal.classList.contains('hidden')) {
-                document.getElementById('username-input').value = currentUsername;
-            }
-        };
-
-        window.saveSettings = async () => {
-            const newName = document.getElementById('username-input').value.trim();
-            if (newName) {
-                currentUsername = newName;
-                localStorage.setItem('chat_username', newName);
-                updateUserUI();
-                updateOnlineStatus();
-                toggleSettings();
-                loadMessages(); // reload to update current messages display
-            }
-        };
-
-        init();
-    </script>
-</body>
-</html>
+      {/* Username Modal */}
+      {isSettingUsername && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 className="text-xl font-bold mb-4">Thiết lập hồ sơ</h3>
+            <form onSubmit={updateUsername} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Tên hiển thị</label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Nhập tên của bạn..."
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  maxLength={20}
+                />
+              </div>
+              <button
+                type="submit"
+                className="w-full py-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-bold transition-colors shadow-lg shadow-blue-900/20"
+              >
+                Lưu thay đổi
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
