@@ -16,32 +16,37 @@
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #020617; color: #e2e8f0; }
+        body { font-family: 'Inter', sans-serif; background-color: #020617; color: #e2e8f0; margin: 0; }
         .custom-scrollbar::-webkit-scrollbar { width: 5px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #334155; }
+        .lucide { width: 1.25rem; height: 1.25rem; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
-    <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
-        
-        // Cấu hình Firebase từ môi trường
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'github-style-chat';
-
+    <!-- Firebase SDKs using Module format for compatibility -->
+    <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, serverTimestamp, onSnapshot, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+        // Gán vào window để Babel script có thể truy cập
+        window.FB = {
+            initializeApp, getAuth, signInAnonymously, signInWithCustomToken, 
+            onAuthStateChanged, getFirestore, collection, addDoc, 
+            serverTimestamp, onSnapshot, doc, setDoc
+        };
+    </script>
 
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        
         function App() {
+            // Đợi Firebase load từ script type module
+            const [fbReady, setFbReady] = useState(false);
             const [user, setUser] = useState(null);
             const [messages, setMessages] = useState([]);
             const [newMessage, setNewMessage] = useState('');
@@ -57,8 +62,27 @@
                 { id: 'thao-luan', name: 'Thảo luận', icon: 'message-square' }
             ];
 
-            // 1. Auth Init
             useEffect(() => {
+                const checkFB = setInterval(() => {
+                    if (window.FB) {
+                        setFbReady(true);
+                        clearInterval(checkFB);
+                    }
+                }, 100);
+                return () => clearInterval(checkFB);
+            }, []);
+
+            useEffect(() => {
+                if (!fbReady) return;
+
+                const { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, setDoc, serverTimestamp, initializeApp } = window.FB;
+                const firebaseConfig = JSON.parse(__firebase_config);
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'chat-polo-app';
+                
+                const app = initializeApp(firebaseConfig);
+                const auth = getAuth(app);
+                const db = getFirestore(app);
+
                 const initAuth = async () => {
                     try {
                         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -66,14 +90,13 @@
                         } else {
                             await signInAnonymously(auth);
                         }
-                    } catch (e) { console.error("Lỗi xác thực:", e); }
+                    } catch (e) { console.error("Xác thực lỗi:", e); }
                 };
                 initAuth();
 
                 const unsubAuth = onAuthStateChanged(auth, (u) => {
                     if (u) {
                         setUser(u);
-                        // Cập nhật trạng thái online
                         const userDoc = doc(db, 'artifacts', appId, 'public', 'data', 'online_users', u.uid);
                         setDoc(userDoc, {
                             uid: u.uid,
@@ -82,81 +105,97 @@
                         }, { merge: true });
                     }
                 });
-                return () => unsubAuth();
-            }, []);
 
-            // 2. Listen Messages
+                return () => unsubAuth();
+            }, [fbReady]);
+
             useEffect(() => {
-                if (!user) return;
-                const q = collection(db, 'artifacts', appId, 'public', 'data', `messages_${activeRoom}`);
+                if (!user || !fbReady) return;
+                const { getFirestore, collection, onSnapshot, initializeApp } = window.FB;
+                const firebaseConfig = JSON.parse(__firebase_config);
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'chat-polo-app';
+                const db = getFirestore(initializeApp(firebaseConfig));
+
+                const q = collection(db, 'artifacts', appId, 'public', 'data', `msg_${activeRoom}`);
                 const unsub = onSnapshot(q, (snap) => {
                     const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                     setMessages(data.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0)));
-                }, (err) => console.error("Lỗi Firestore:", err));
+                });
                 return () => unsub();
-            }, [user, activeRoom]);
+            }, [user, activeRoom, fbReady]);
 
-            // 3. Listen Online Users
             useEffect(() => {
-                if (!user) return;
-                const q = collection(db, 'artifacts', appId, 'public', 'data', 'online_users');
-                const unsub = onSnapshot(q, (snap) => {
-                    setUsersOnline(snap.docs.map(d => d.data()));
-                }, (err) => console.error("Lỗi User List:", err));
-                return () => unsub();
-            }, [user]);
+                if (!user || !fbReady) return;
+                const { getFirestore, collection, onSnapshot, initializeApp } = window.FB;
+                const firebaseConfig = JSON.parse(__firebase_config);
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'chat-polo-app';
+                const db = getFirestore(initializeApp(firebaseConfig));
 
-            // Auto scroll
+                const q = collection(db, 'artifacts', appId, 'public', 'data', 'online_users');
+                return onSnapshot(q, (snap) => {
+                    setUsersOnline(snap.docs.map(d => d.data()));
+                });
+            }, [user, fbReady]);
+
             useEffect(() => {
                 if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-            }, [messages]);
+                if (window.lucide) lucide.createIcons();
+            }, [messages, activeRoom]);
 
             const handleSendMessage = async (e) => {
                 e.preventDefault();
-                if (!newMessage.trim() || !user) return;
+                if (!newMessage.trim() || !user || !fbReady) return;
                 const text = newMessage;
                 setNewMessage('');
+
+                const { getFirestore, collection, addDoc, serverTimestamp, initializeApp } = window.FB;
+                const firebaseConfig = JSON.parse(__firebase_config);
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'chat-polo-app';
+                const db = getFirestore(initializeApp(firebaseConfig));
+
                 try {
-                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', `messages_${activeRoom}`), {
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', `msg_${activeRoom}`), {
                         text,
                         uid: user.uid,
                         username: username || `User_${user.uid.slice(0, 4)}`,
                         timestamp: serverTimestamp()
                     });
-                } catch (e) { console.error("Gửi tin thất bại:", e); }
+                } catch (e) { console.error("Gửi lỗi:", e); }
             };
 
-            const saveUsername = (e) => {
+            const handleSaveProfile = (e) => {
                 e.preventDefault();
                 localStorage.setItem('chat_username', username);
-                if (user) {
+                if (user && fbReady) {
+                    const { getFirestore, doc, setDoc, initializeApp } = window.FB;
+                    const firebaseConfig = JSON.parse(__firebase_config);
+                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'chat-polo-app';
+                    const db = getFirestore(initializeApp(firebaseConfig));
                     const userDoc = doc(db, 'artifacts', appId, 'public', 'data', 'online_users', user.uid);
                     setDoc(userDoc, { username: username }, { merge: true });
                 }
                 setIsSettingUsername(false);
             };
 
-            if (!user) return (
+            if (!fbReady || !user) return (
                 <div className="h-screen flex items-center justify-center bg-slate-950">
                     <div className="flex flex-col items-center gap-4">
-                        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                        <p className="text-slate-400 font-medium">Đang kết nối server...</p>
+                        <div className="w-10 h-10 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                        <p className="text-slate-500 text-sm italic">Đang khởi tạo kết nối...</p>
                     </div>
                 </div>
             );
 
             return (
                 <div className="flex h-screen bg-slate-950 text-slate-200 overflow-hidden select-none">
-                    {/* Sidebar */}
                     <aside className="w-64 bg-slate-900 border-r border-slate-800 hidden md:flex flex-col">
                         <div className="p-5 border-b border-slate-800 flex items-center gap-3">
-                            <div className="bg-blue-600 p-2 rounded-lg shadow-lg shadow-blue-500/20">
-                                <i data-lucide="message-square" className="text-white w-5 h-5"></i>
+                            <div className="bg-blue-600 p-2 rounded-lg">
+                                <i data-lucide="message-square" className="text-white"></i>
                             </div>
                             <h1 className="font-bold text-lg tracking-tight">DevChat</h1>
                         </div>
-                        
-                        <nav className="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar">
+                        <nav className="flex-1 overflow-y-auto p-3 space-y-1">
                             <p className="text-[10px] font-bold text-slate-500 px-3 py-2 uppercase tracking-widest">Kênh thảo luận</p>
                             {rooms.map(room => (
                                 <button key={room.id} onClick={() => setActiveRoom(room.id)}
@@ -166,81 +205,71 @@
                                 </button>
                             ))}
                         </nav>
-
                         <div className="p-4 bg-slate-900 border-t border-slate-800">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center font-bold text-white shadow-md">
+                                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center font-bold text-white">
                                     {username ? username[0].toUpperCase() : 'U'}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-semibold truncate text-slate-100">{username || 'Người dùng ẩn danh'}</p>
+                                    <p className="text-sm font-semibold truncate text-slate-100">{username || 'Guest'}</p>
                                     <p className="text-[10px] text-slate-500 font-mono">#{user.uid.slice(0, 6)}</p>
                                 </div>
-                                <button onClick={() => setIsSettingUsername(true)} className="text-slate-500 hover:text-white p-1 transition-colors">
+                                <button onClick={() => setIsSettingUsername(true)} className="text-slate-500 hover:text-white p-1">
                                     <i data-lucide="settings" className="w-4 h-4"></i>
                                 </button>
                             </div>
                         </div>
                     </aside>
 
-                    {/* Chat Area */}
                     <main className="flex-1 flex flex-col min-w-0 bg-slate-950">
-                        <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/30 backdrop-blur-md sticky top-0 z-10">
+                        <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/30 backdrop-blur-md">
                             <div className="flex items-center gap-2">
                                 <i data-lucide="hash" className="text-slate-500 w-4 h-4"></i>
                                 <h2 className="font-bold text-slate-100">{rooms.find(r => r.id === activeRoom)?.name}</h2>
                             </div>
                             <div className="flex items-center gap-2 px-3 py-1 bg-slate-800/50 border border-slate-700/50 rounded-full text-[10px] font-medium text-slate-300">
                                 <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                                {usersOnline.length} Trực tuyến
+                                {usersOnline.length} Online
                             </div>
                         </header>
 
                         <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-                            {messages.length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center text-slate-600 opacity-30">
-                                    <i data-lucide="message-circle" className="w-12 h-12 mb-2"></i>
-                                    <p className="text-sm italic">Chưa có tin nhắn nào trong phòng này...</p>
-                                </div>
-                            ) : (
-                                messages.map((m, i) => {
-                                    const isMe = m.uid === user.uid;
-                                    return (
-                                        <div key={m.id || i} className={`flex gap-4 ${isMe ? 'flex-row-reverse' : ''}`}>
-                                            <div className={`w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center font-bold text-white shadow-lg ${isMe ? 'bg-blue-600' : 'bg-slate-800 border border-slate-700'}`}>
-                                                {m.username ? m.username[0].toUpperCase() : '?'}
+                            {messages.map((m, i) => {
+                                const isMe = m.uid === user.uid;
+                                return (
+                                    <div key={m.id || i} className={`flex gap-4 ${isMe ? 'flex-row-reverse' : ''}`}>
+                                        <div className={`w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center font-bold text-white ${isMe ? 'bg-blue-600' : 'bg-slate-800 border border-slate-700'}`}>
+                                            {m.username ? m.username[0].toUpperCase() : '?'}
+                                        </div>
+                                        <div className={`flex flex-col max-w-[75%] ${isMe ? 'items-end' : ''}`}>
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-xs font-bold text-slate-400">{m.username}</span>
+                                                <span className="text-[9px] text-slate-600">
+                                                    {m.timestamp ? new Date(m.timestamp.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '...'}
+                                                </span>
                                             </div>
-                                            <div className={`flex flex-col max-w-[75%] ${isMe ? 'items-end' : ''}`}>
-                                                <div className="flex items-center gap-2 mb-1 px-1">
-                                                    <span className="text-xs font-bold text-slate-400">{m.username}</span>
-                                                    <span className="text-[9px] text-slate-600">
-                                                        {m.timestamp ? new Date(m.timestamp.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Vừa xong'}
-                                                    </span>
-                                                </div>
-                                                <div className={`px-4 py-2 rounded-2xl text-sm leading-relaxed shadow-sm ${isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700/50'}`}>
-                                                    {m.text}
-                                                </div>
+                                            <div className={`px-4 py-2 rounded-2xl text-sm ${isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700/50'}`}>
+                                                {m.text}
                                             </div>
                                         </div>
-                                    );
-                                })
-                            )}
+                                    </div>
+                                );
+                            })}
                         </div>
 
                         <form onSubmit={handleSendMessage} className="p-4 bg-slate-900/20 border-t border-slate-800">
                             <div className="max-w-5xl mx-auto flex gap-3">
                                 <input value={newMessage} onChange={e => setNewMessage(e.target.value)}
                                     placeholder={`Nhắn tin vào #${activeRoom}...`}
-                                    className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all text-slate-200" />
+                                    className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-200 shadow-inner" />
                                 <button type="submit" disabled={!newMessage.trim()}
-                                    className="p-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-30 rounded-xl text-white transition-all active:scale-95 shadow-lg shadow-blue-900/40">
+                                    className="p-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-30 rounded-xl text-white transition-all shadow-lg shadow-blue-900/40">
                                     <i data-lucide="send" className="w-5 h-5"></i>
                                 </button>
                             </div>
                         </form>
                     </main>
 
-                    {/* Users Sidebar */}
                     <aside className="w-64 bg-slate-900 border-l border-slate-800 hidden lg:flex flex-col">
                         <div className="p-4 border-b border-slate-800 flex items-center gap-2">
                             <i data-lucide="users" className="text-slate-500 w-4 h-4"></i>
@@ -248,36 +277,35 @@
                         </div>
                         <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
                             {usersOnline.map((u, i) => (
-                                <div key={i} className="flex items-center gap-3 group">
+                                <div key={i} className="flex items-center gap-3">
                                     <div className="relative">
-                                        <div className="w-8 h-8 bg-slate-800 border border-slate-700 rounded-lg flex items-center justify-center text-xs font-bold text-slate-400 group-hover:text-blue-400 transition-colors">
+                                        <div className="w-8 h-8 bg-slate-800 rounded-lg flex items-center justify-center text-xs font-bold text-slate-400">
                                             {u.username ? u.username[0].toUpperCase() : '?'}
                                         </div>
                                         <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 border-2 border-slate-900 rounded-full"></div>
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-xs font-semibold text-slate-300 truncate group-hover:text-white transition-colors">{u.username}</p>
-                                        <p className="text-[9px] text-green-500 font-medium uppercase tracking-tighter">Trực tuyến</p>
+                                        <p className="text-xs font-semibold text-slate-300 truncate">{u.username}</p>
+                                        <p className="text-[9px] text-green-500 font-medium">Trực tuyến</p>
                                     </div>
                                 </div>
                             ))}
                         </div>
                     </aside>
 
-                    {/* Username Modal */}
                     {isSettingUsername && (
                         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200">
+                            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
                                 <h3 className="text-xl font-bold mb-4 text-white">Thiết lập hồ sơ</h3>
-                                <form onSubmit={saveUsername} className="space-y-4">
+                                <form onSubmit={handleSaveProfile} className="space-y-4">
                                     <div>
                                         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2">Tên hiển thị</label>
                                         <input autoFocus value={username} onChange={e => setUsername(e.target.value)} maxLength={15}
-                                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+                                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none" />
                                     </div>
-                                    <div className="flex gap-2 pt-2">
-                                        <button type="submit" className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-bold text-white transition-all shadow-lg shadow-blue-900/20">Lưu thay đổi</button>
-                                        <button type="button" onClick={() => setIsSettingUsername(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg font-medium text-slate-400">Hủy</button>
+                                    <div className="flex gap-2">
+                                        <button type="submit" className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-bold text-white transition-colors">Lưu lại</button>
+                                        <button type="button" onClick={() => setIsSettingUsername(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg font-medium text-slate-400 transition-colors">Hủy</button>
                                     </div>
                                 </form>
                             </div>
@@ -289,10 +317,6 @@
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
-        
-        // Re-init icons
-        const observer = new MutationObserver(() => lucide.createIcons());
-        observer.observe(document.getElementById('root'), { childList: true, subtree: true });
     </script>
 </body>
 </html>
