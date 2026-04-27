@@ -45,7 +45,7 @@
         const { useState, useEffect, useRef } = React;
         
         function App() {
-            const [status, setStatus] = useState('loading'); // loading, error, ready
+            const [status, setStatus] = useState('loading');
             const [user, setUser] = useState(null);
             const [messages, setMessages] = useState([]);
             const [input, setInput] = useState('');
@@ -77,7 +77,6 @@
                     }
 
                     try {
-                        // Cấu hình Firebase Của Ngọc (Mũi Tên VN)
                         const config = {
                             apiKey: "AIzaSyD79jXL1tXOWzEV1Nvrme_t7FurqAa8UO8",
                             authDomain: "muitenvn-b0e81.firebaseapp.com",
@@ -89,13 +88,12 @@
                         };
 
                         const sdk = window.ChatSDK;
-                        const appId = 'muitenvn-chat'; // Đổi ID này cho gọn
+                        const appId = 'muitenvn-chat';
                         
                         const app = sdk.initializeApp(config);
                         const auth = sdk.getAuth(app);
                         dbRef.current = sdk.getFirestore(app);
 
-                        // Đăng nhập ẩn danh
                         await sdk.signInAnonymously(auth);
 
                         sdk.onAuthStateChanged(auth, (u) => {
@@ -128,12 +126,12 @@
                 const unsubMsg = sdk.onSnapshot(qMsg, (snap) => {
                     const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                     setMessages(list.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0)));
-                });
+                }, (err) => setStatus('error'));
 
                 const qUser = sdk.collection(dbRef.current, 'artifacts', appId, 'public', 'data', 'presence');
                 const unsubUser = sdk.onSnapshot(qUser, (snap) => {
                     setOnlineUsers(snap.docs.map(d => d.data()));
-                });
+                }, (err) => console.error(err));
 
                 return () => { unsubMsg(); unsubUser(); };
             }, [user, room, status]);
@@ -176,74 +174,62 @@
 
             if (status === 'error') return (
                 <div className="h-screen flex flex-col items-center justify-center bg-slate-950 text-white p-8 text-center">
-                    <div>
-                        <i data-lucide="alert-triangle" className="w-12 h-12 text-red-500 mx-auto mb-4"></i>
-                        <h2 className="text-xl font-bold text-red-400">Không thể kết nối Database!</h2>
-                        <p className="text-slate-400 mt-2 max-w-md">Ngọc ơi, bạn nhớ bật <b>Firestore Database (Test mode)</b> và bật <b>Authentication (Anonymous)</b> trên trang Firebase như hướng dẫn nha. Bật xong F5 lại web là chạy được liền!</p>
-                    </div>
+                    <i data-lucide="alert-triangle" className="w-12 h-12 text-red-500 mx-auto mb-4"></i>
+                    <h2 className="text-xl font-bold text-red-400">Lỗi kết nối cơ sở dữ liệu!</h2>
+                    <p className="text-slate-400 mt-2 max-w-md">Ngọc ơi, đừng quên bật <b>Firestore Database (Test mode)</b> và <b>Authentication (Anonymous)</b> trên Firebase Console nhé!</p>
                 </div>
             );
 
             return (
                 <div className="flex h-screen bg-[#020617] text-slate-200 overflow-hidden">
-                    {/* Sidebar */}
                     <aside className="w-72 bg-[#0f172a] border-r border-slate-800 hidden md:flex flex-col">
                         <div className="p-6 border-b border-slate-800 flex items-center gap-3">
-                            <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-500/20">
+                            <div className="bg-blue-600 p-2 rounded-xl">
                                 <i data-lucide="zap" className="text-white w-5 h-5"></i>
                             </div>
-                            <h1 className="font-black text-xl tracking-tight uppercase italic">DevChat</h1>
+                            <h1 className="font-black text-xl italic uppercase">DevChat</h1>
                         </div>
                         <nav className="flex-1 p-4 space-y-1">
                             {roomList.map(r => (
                                 <button key={r.id} onClick={() => setRoom(r.id)}
-                                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${room === r.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:bg-slate-800'}`}>
+                                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${room === r.id ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
                                     <i data-lucide={r.icon} className="w-4 h-4"></i>
                                     <span className="text-sm font-bold">{r.name}</span>
                                 </button>
                             ))}
                         </nav>
-                        <div className="p-4 border-t border-slate-800">
-                            <div className="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800 cursor-pointer" onClick={() => setModalOpen(true)}>
+                        <div className="p-4 border-t border-slate-800" onClick={() => setModalOpen(true)}>
+                            <div className="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800 cursor-pointer">
                                 <div className="w-10 h-10 bg-slate-800 border border-slate-700 rounded-lg flex items-center justify-center font-bold text-blue-400">
                                     {username ? username[0].toUpperCase() : 'U'}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm font-bold truncate">{username || 'Người dùng'}</p>
-                                    <p className="text-[10px] text-slate-500 font-mono italic">Thiết lập hồ sơ</p>
+                                    <p className="text-[10px] text-slate-500 italic">Thiết lập hồ sơ</p>
                                 </div>
                             </div>
                         </div>
                     </aside>
 
-                    {/* Main Chat */}
-                    <main className="flex-1 flex flex-col bg-[#020617]">
-                        <header className="h-20 border-b border-slate-800 flex items-center justify-between px-8 bg-[#020617]/80 backdrop-blur-md">
+                    <main className="flex-1 flex flex-col">
+                        <header className="h-20 border-b border-slate-800 flex items-center justify-between px-8">
                             <div>
                                 <h2 className="font-black text-lg flex items-center gap-2">
                                     <span className="text-blue-500">#</span> {roomList.find(r => r.id === room)?.name}
                                 </h2>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{onlineUsers.length} Online</span>
-                                </div>
-                            </div>
-                            <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center border border-slate-700">
-                                <i data-lucide="bell" className="w-4 h-4 text-slate-400"></i>
+                                <span className="text-[10px] font-bold text-slate-500 uppercase">{onlineUsers.length} Online</span>
                             </div>
                         </header>
 
                         <div ref={scrollRef} className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
                             {messages.map((m, i) => (
                                 <div key={m.id || i} className={`flex gap-4 msg-animate ${m.uid === user.uid ? 'flex-row-reverse' : ''}`}>
-                                    <div className={`w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center font-black text-white ${m.uid === user.uid ? 'bg-blue-600' : 'bg-slate-800'}`}>
+                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-white ${m.uid === user.uid ? 'bg-blue-600' : 'bg-slate-800'}`}>
                                         {m.sender ? m.sender[0].toUpperCase() : '?'}
                                     </div>
                                     <div className={`flex flex-col max-w-[70%] ${m.uid === user.uid ? 'items-end' : ''}`}>
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className="text-[10px] font-bold text-slate-500 uppercase">{m.sender}</span>
-                                        </div>
-                                        <div className={`px-4 py-2.5 rounded-2xl text-sm ${m.uid === user.uid ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 rounded-tl-none'}`}>
+                                        <span className="text-[10px] font-bold text-slate-500 mb-1">{m.sender}</span>
+                                        <div className={`px-4 py-2 rounded-2xl text-sm ${m.uid === user.uid ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-800 rounded-tl-none'}`}>
                                             {m.text}
                                         </div>
                                     </div>
@@ -254,26 +240,24 @@
                         <footer className="p-6">
                             <form onSubmit={handleSend} className="max-w-4xl mx-auto flex gap-3">
                                 <input value={input} onChange={e => setInput(e.target.value)}
-                                    placeholder={`Gửi tin nhắn vào #${roomList.find(r => r.id === room)?.name}...`}
-                                    className="flex-1 bg-slate-900 border border-slate-800 rounded-2xl px-6 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
-                                <button type="submit" disabled={!input.trim()}
-                                    className="px-8 bg-blue-600 hover:bg-blue-500 disabled:opacity-30 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all">
+                                    placeholder="Viết tin nhắn..."
+                                    className="flex-1 bg-slate-900 border border-slate-800 rounded-2xl px-6 py-4 text-sm outline-none focus:ring-2 focus:ring-blue-500/50" />
+                                <button type="submit" disabled={!input.trim()} className="px-8 bg-blue-600 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all hover:bg-blue-500 disabled:opacity-30">
                                     Gửi
                                 </button>
                             </form>
                         </footer>
                     </main>
 
-                    {/* Modal */}
                     {modalOpen && (
                         <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-                            <div className="bg-[#0f172a] border border-slate-800 rounded-3xl p-8 w-full max-w-sm shadow-2xl">
-                                <h3 className="text-xl font-black text-white text-center mb-6">HỒ SƠ CỦA BẠN</h3>
+                            <div className="bg-[#0f172a] border border-slate-800 rounded-3xl p-8 w-full max-w-sm">
+                                <h3 className="text-xl font-black text-center mb-6">ĐỔI BIỆT DANH</h3>
                                 <form onSubmit={saveUsername} className="space-y-4">
                                     <input autoFocus value={username} onChange={e => setUsername(e.target.value)} maxLength={15} placeholder="Nhập biệt danh..."
-                                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none" />
+                                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white outline-none" />
                                     <div className="flex gap-2">
-                                        <button type="submit" className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold">Lưu</button>
+                                        <button type="submit" className="flex-1 py-3 bg-blue-600 rounded-xl font-bold">Lưu</button>
                                         <button type="button" onClick={() => setModalOpen(false)} className="px-6 py-3 bg-slate-800 rounded-xl font-bold">Hủy</button>
                                     </div>
                                 </form>
