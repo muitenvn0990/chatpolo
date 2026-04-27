@@ -4,14 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DevChat - Realtime App</title>
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
@@ -69,7 +65,6 @@
 
             useEffect(() => {
                 const init = async () => {
-                    // Chờ SDK tải xong
                     let retry = 0;
                     while (!window.ChatSDK && retry < 50) {
                         await new Promise(r => setTimeout(r, 100));
@@ -82,27 +77,26 @@
                     }
 
                     try {
-                        // Kiểm tra an toàn cho biến môi trường
-                        const configStr = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
-                        if (!configStr) {
-                            console.error("Firebase config is missing!");
-                            setStatus('error');
-                            return;
-                        }
+                        // Cấu hình Firebase Của Ngọc (Mũi Tên VN)
+                        const config = {
+                            apiKey: "AIzaSyD79jXL1tXOWzEV1Nvrme_t7FurqAa8UO8",
+                            authDomain: "muitenvn-b0e81.firebaseapp.com",
+                            projectId: "muitenvn-b0e81",
+                            storageBucket: "muitenvn-b0e81.firebasestorage.app",
+                            messagingSenderId: "226380058850",
+                            appId: "1:226380058850:web:12c9189417b8fdcb8d0ebb",
+                            measurementId: "G-QCS9EKVNWJ"
+                        };
 
                         const sdk = window.ChatSDK;
-                        const config = JSON.parse(configStr);
-                        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app';
+                        const appId = 'muitenvn-chat'; // Đổi ID này cho gọn
                         
                         const app = sdk.initializeApp(config);
                         const auth = sdk.getAuth(app);
                         dbRef.current = sdk.getFirestore(app);
 
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await sdk.signInWithCustomToken(auth, __initial_auth_token);
-                        } else {
-                            await sdk.signInAnonymously(auth);
-                        }
+                        // Đăng nhập ẩn danh
+                        await sdk.signInAnonymously(auth);
 
                         sdk.onAuthStateChanged(auth, (u) => {
                             if (u) {
@@ -127,7 +121,7 @@
             useEffect(() => {
                 if (status !== 'ready' || !user) return;
                 const sdk = window.ChatSDK;
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app';
+                const appId = 'muitenvn-chat';
                 sessionStorage.setItem('active_room', room);
 
                 const qMsg = sdk.collection(dbRef.current, 'artifacts', appId, 'public', 'data', `room_${room}`);
@@ -155,7 +149,7 @@
                 const text = input;
                 setInput('');
                 const sdk = window.ChatSDK;
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app';
+                const appId = 'muitenvn-chat';
                 try {
                     await sdk.addDoc(sdk.collection(dbRef.current, 'artifacts', appId, 'public', 'data', `room_${room}`), {
                         text, uid: user.uid, sender: username || `User_${user.uid.slice(0, 4)}`, timestamp: sdk.serverTimestamp()
@@ -169,7 +163,7 @@
                 setModalOpen(false);
                 if (user) {
                     const sdk = window.ChatSDK;
-                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app';
+                    const appId = 'muitenvn-chat';
                     sdk.setDoc(sdk.doc(dbRef.current, 'artifacts', appId, 'public', 'data', 'presence', user.uid), { name: username }, { merge: true });
                 }
             };
@@ -181,11 +175,11 @@
             );
 
             if (status === 'error') return (
-                <div className="h-screen flex items-center justify-center bg-slate-950 text-white p-8 text-center">
+                <div className="h-screen flex flex-col items-center justify-center bg-slate-950 text-white p-8 text-center">
                     <div>
                         <i data-lucide="alert-triangle" className="w-12 h-12 text-red-500 mx-auto mb-4"></i>
-                        <h2 className="text-xl font-bold">Lỗi cấu hình hệ thống</h2>
-                        <p className="text-slate-400 mt-2 max-w-md">Vui lòng chạy ứng dụng trong môi trường có cấu hình Firebase hợp lệ.</p>
+                        <h2 className="text-xl font-bold text-red-400">Không thể kết nối Database!</h2>
+                        <p className="text-slate-400 mt-2 max-w-md">Ngọc ơi, bạn nhớ bật <b>Firestore Database (Test mode)</b> và bật <b>Authentication (Anonymous)</b> trên trang Firebase như hướng dẫn nha. Bật xong F5 lại web là chạy được liền!</p>
                     </div>
                 </div>
             );
@@ -215,7 +209,7 @@
                                     {username ? username[0].toUpperCase() : 'U'}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold truncate">{username || 'Guest'}</p>
+                                    <p className="text-sm font-bold truncate">{username || 'Người dùng'}</p>
                                     <p className="text-[10px] text-slate-500 font-mono italic">Thiết lập hồ sơ</p>
                                 </div>
                             </div>
