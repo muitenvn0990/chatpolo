@@ -6,14 +6,12 @@
     <title>Bombanana - 3D Multiplayer Bomber</title>
     <link rel="stylesheet" href="style.css">
     
-    <!-- Three.js CDN để dựng đồ họa 3D -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- PeerJS CDN để xử lý kết nối P2P Multiplayer -->
-    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
 </head>
 <body>
 
-    <!-- Giao diện Phòng chờ (Lobby) -->
     <div id="lobby-container">
         <div class="lobby-card">
             <h1>🍌 Bombanana 3D</h1>
@@ -21,7 +19,6 @@
             
             <hr>
 
-            <!-- Khối dành cho Người tạo phòng -->
             <div class="menu-section">
                 <button id="btn-host" class="btn primary">Tạo Phòng (Host)</button>
                 <div id="host-info" class="hidden">
@@ -35,18 +32,15 @@
 
             <div class="separator">HOẶC</div>
 
-            <!-- Khối dành cho Người tham gia -->
             <div class="menu-section">
                 <input type="text" id="join-id" placeholder="Nhập mã phòng của bạn bè...">
                 <button id="btn-join" class="btn secondary">Vào Phòng (Guest)</button>
             </div>
             
-            <!-- Thông báo trạng thái -->
             <div id="status-message"></div>
         </div>
     </div>
 
-    <!-- Giao diện trong game (UI Overlay) -->
     <div id="game-ui" class="hidden">
         <div id="hud">
             <div class="player-status standard">
@@ -59,9 +53,7 @@
         <div id="announcement" class="hidden"></div>
     </div>
 
-    <!-- Hệ thống nút bấm ảo cho thiết bị di động (Mobile Controls) -->
     <div id="mobile-controls" class="hidden">
-        <!-- Nút D-Pad di chuyển -->
         <div class="dpad">
             <button id="ctrl-up" class="dpad-btn up">▲</button>
             <div class="dpad-row">
@@ -71,12 +63,9 @@
             </div>
             <button id="ctrl-down" class="dpad-btn down">▼</button>
         </div>
-        
-        <!-- Nút đặt bom -->
         <button id="ctrl-bomb">🍌</button>
     </div>
 
-    <!-- Nhúng file logic xử lý game -->
     <script src="game.js"></script>
 </body>
 </html>
